@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="ru" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Python Конструктор</title>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="/_sdk/data_sdk.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+    }
+    
+    .draggable {
+      cursor: grab;
+      transition: transform 0.2s, box-shadow 0.2s;
+      user-select: none;
+    }
+    
+    .draggable:active {
+      cursor: grabbing;
+    }
+    
+    .draggable.dragging {
+      opacity: 0.5;
+      transform: scale(1.05);
+    }
+    
+    .drop-zone {
+      min-height: 80px;
+      border: 3px dashed #cbd5e1;
+      border-radius: 12px;
+      transition: all 0.3s;
+    }
+    
+    .drop-zone.drag-over {
+      border-color: #3b82f6;
+      background-color: #dbeafe;
+      transform: scale(1.02);
+    }
+    
+    .drop-zone.filled {
+      border-style: solid;
+      border-color: #10b981;
+    }
+    
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    .success-animation {
+      animation: bounce 0.5s ease-in-out;
+    }
+    
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-10px); }
+      75% { transform: translateX(10px); }
+    }
+    
+    .error-animation {
+      animation: shake 0.4s ease-in-out;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+
+    .float {
+      animation: float 3s ease-in-out infinite;
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+ </head>
+ <body class="h-full">
+  <div id="app" class="w-full h-full overflow-auto"></div>
+  <script>
+    const defaultConfig = {
+      background_color: "#f0fdf4",
+      card_color: "#ffffff",
+      text_color: "#1e293b",
+      primary_color: "#10b981",
+      accent_color: "#3b82f6",
+      main_title: "🎮 Python Конструктор Команд",
+      subtitle: "Перетащи блоки кода и собери правильную программу!",
+      instruction_text: "Перетащи блоки в правильном порядке ↓",
+      font_family: "system-ui",
+      font_size: 16
+    };
+
+    const levels = [
+      {
+        id: "level1",
+        title: "Уровень 1: Первое приветствие",
+        task: "Создай программу, которая спрашивает имя и приветствует пользователя",
+        blocks: [
+          { id: "b1", text: 'name = input("Как тебя зовут? ")', icon: "⌨️" },
+          { id: "b2", text: 'print("Привет,", name)', icon: "📢" },
+          { id: "b3", text: 'print("Добро пожаловать!")', icon: "👋" }
+        ],
+        correctOrder: ["b1", "b2", "b3"],
+        explanation: "Сначала получаем данные (input), потом выводим результат (print)!"
+      },
+      {
+        id: "level2",
+        title: "Уровень 2: Калькулятор",
+        task: "Собери программу для сложения двух чисел",
+        blocks: [
+          { id: "b1", text: 'num1 = int(input("Первое число: "))', icon: "1️⃣" },
+          { id: "b2", text: 'num2 = int(input("Второе число: "))', icon: "2️⃣" },
+          { id: "b3", text: 'result = num1 + num2', icon: "➕" },
+          { id: "b4", text: 'print("Сумма =", result)', icon: "🔢" }
+        ],
+        correctOrder: ["b1", "b2", "b3", "b4"],
+        explanation: "Вводим оба числа, складываем их, потом выводим результат!"
+      },
+      {
+        id: "level3",
+        title: "Уровень 3: Площадь прямоугольника",
+        task: "Программа для вычисления площади прямоугольника",
+        blocks: [
+          { id: "b1", text: 'width = int(input("Ширина: "))', icon: "↔️" },
+          { id: "b2", text: 'height = int(input("Высота: "))', icon: "↕️" },
+          { id: "b3", text: 'area = width * height', icon: "✖️" },
+          { id: "b4", text: 'print("Площадь =", area)', icon: "📐" }
+        ],
+        correctOrder: ["b1", "b2", "b3", "b4"],
+        explanation: "Получаем размеры, умножаем их (формула площади), выводим ответ!"
+      }
+    ];
+
+    let currentLevel = 0;
+    let draggedElement = null;
+    let userOrder = [];
+    let attempts = 0;
+
+    const dataHandler = {
+      onDataChanged(data) {
+        // Данные обновлены
+      }
+    };
+
+    async function initApp() {
+      const initResult = await window.dataSdk.init(dataHandler);
+      if (!initResult.isOk) {
+        console.error("Failed to initialize");
+      }
+      
+      if (window.elementSdk) {
+        window.elementSdk.init({
+          defaultConfig,
+          onConfigChange: async (config) => {
+            const app = document.getElementById('app');
+            if (!app) return;
+            
+            const baseSize = config.font_size || defaultConfig.font_size;
+            const fontFamily = config.font_family || defaultConfig.font_family;
+            const baseFontStack = 'system-ui, -apple-system, sans-serif';
+            
+            app.style.backgroundColor = config.background_color || defaultConfig.background_color;
+            app.style.fontFamily = `${fontFamily}, ${baseFontStack}`;
+            
+            const title = document.getElementById('main-title');
+            if (title) {
+              title.textContent = config.main_title || defaultConfig.main_title;
+              title.style.color = config.text_color || defaultConfig.text_color;
+              title.style.fontSize = `${baseSize * 1.75}px`;
+            }
+            
+            const subtitle = document.getElementById('subtitle');
+            if (subtitle) {
+              subtitle.textContent = config.subtitle || defaultConfig.subtitle;
+              subtitle.style.color = config.text_color || defaultConfig.text_color;
+              subtitle.style.fontSize = `${baseSize}px`;
+            }
+            
+            const instruction = document.getElementById('instruction');
+            if (instruction) {
+              instruction.textContent = config.instruction_text || defaultConfig.instruction_text;
+              instruction.style.color = config.text_color || defaultConfig.text_color;
+              instruction.style.fontSize = `${baseSize * 1.125}px`;
+            }
+            
+            document.querySelectorAll('.card-bg').forEach(el => {
+              el.style.backgroundColor = config.card_color || defaultConfig.card_color;
+            });
+            
+            document.querySelectorAll('.text-color').forEach(el => {
+              el.style.color = config.text_color || defaultConfig.text_color;
+            });
+            
+            document.querySelectorAll('.primary-btn').forEach(el => {
+              el.style.backgroundColor = config.primary_color || defaultConfig.primary_color;
+            });
+            
+            document.querySelectorAll('.accent-color').forEach(el => {
+              el.style.color = config.accent_color || defaultConfig.accent_color;
+            });
+          },
+          mapToCapabilities: (config) => ({
+            recolorables: [
+              {
+                get: () => config.background_color || defaultConfig.background_color,
+                set: (value) => {
+                  window.elementSdk.config.background_color = value;
+                  window.elementSdk.setConfig({ background_color: value });
+                }
+              },
+              {
+                get: () => config.card_color || defaultConfig.card_color,
+                set: (value) => {
+                  window.elementSdk.config.card_color = value;
+                  window.elementSdk.setConfig({ card_color: value });
+                }
+              },
+              {
+                get: () => config.text_color || defaultConfig.text_color,
+                set: (value) => {
+                  window.elementSdk.config.text_color = value;
+                  window.elementSdk.setConfig({ text_color: value });
+                }
+              },
+              {
+                get: () => config.primary_color || defaultConfig.primary_color,
+                set: (value) => {
+                  window.elementSdk.config.primary_color = value;
+                  window.elementSdk.setConfig({ primary_color: value });
+                }
+              },
+              {
+                get: () => config.accent_color || defaultConfig.accent_color,
+                set: (value) => {
+                  window.elementSdk.config.accent_color = value;
+                  window.elementSdk.setConfig({ accent_color: value });
+                }
+              }
+            ],
+            borderables: [],
+            fontEditable: {
+              get: () => config.font_family || defaultConfig.font_family,
+              set: (value) => {
+                window.elementSdk.config.font_family = value;
+                window.elementSdk.setConfig({ font_family: value });
+              }
+            },
+            fontSizeable: {
+              get: () => config.font_size || defaultConfig.font_size,
+              set: (value) => {
+                window.elementSdk.config.font_size = value;
+                window.elementSdk.setConfig({ font_size: value });
+              }
+            }
+          }),
+          mapToEditPanelValues: (config) => new Map([
+            ["main_title", config.main_title || defaultConfig.main_title],
+            ["subtitle", config.subtitle || defaultConfig.subtitle],
+            ["instruction_text", config.instruction_text || defaultConfig.instruction_text]
+          ])
+        });
+      }
+      
+      renderApp();
+    }
+
+    function renderApp() {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const level = levels[currentLevel];
+      
+      document.getElementById('app').innerHTML = `
+        <div style="background-color: ${config.background_color || defaultConfig.background_color}; padding: 24px 16px; max-width: 1000px; margin: 0 auto; min-height: 100vh;">
+          <header style="text-align: center; margin-bottom: 32px;">
+            <h1 id="main-title" class="text-color" style="font-size: ${baseSize * 1.75}px; font-weight: bold; margin-bottom: 8px;">
+              ${config.main_title || defaultConfig.main_title}
+            </h1>
+            <p id="subtitle" class="text-color" style="font-size: ${baseSize}px; opacity: 0.8;">
+              ${config.subtitle || defaultConfig.subtitle}
+            </p>
+            <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+              ${levels.map((l, idx) => `
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: ${idx <= currentLevel ? config.primary_color || defaultConfig.primary_color : '#e2e8f0'}; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: ${baseSize * 0.875}px;">
+                  ${idx + 1}
+                </div>
+              `).join('')}
+            </div>
+          </header>
+
+          <div class="card-bg" style="background-color: ${config.card_color || defaultConfig.card_color}; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h2 class="text-color" style="font-size: ${baseSize * 1.375}px; font-weight: bold; margin-bottom: 12px;">
+              ${level.title}
+            </h2>
+            <p class="text-color" style="font-size: ${baseSize * 1.125}px; line-height: 1.6;">
+              🎯 ${level.task}
+            </p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+            <div class="card-bg" style="background-color: ${config.card_color || defaultConfig.card_color}; border-radius: 16px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+              <h3 id="instruction" class="text-color" style="font-size: ${baseSize * 1.125}px; font-weight: bold; margin-bottom: 16px;">
+                ${config.instruction_text || defaultConfig.instruction_text}
+              </h3>
+              <div id="blocks-container" style="display: flex; flex-direction: column; gap: 12px;">
+                ${level.blocks.map(block => `
+                  <div 
+                    class="draggable float"
+                    draggable="true"
+                    data-block-id="${block.id}"
+                    style="background: linear-gradient(135deg, ${config.accent_color || defaultConfig.accent_color}, ${adjustBrightness(config.accent_color || defaultConfig.accent_color, -20)}); color: white; padding: 16px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); font-family: 'Courier New', monospace; font-size: ${baseSize * 0.9375}px; font-weight: 600;"
+                  >
+                    <span style="font-size: ${baseSize * 1.25}px; margin-right: 8px;">${block.icon}</span>
+                    ${block.text}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="card-bg" style="background-color: ${config.card_color || defaultConfig.card_color}; border-radius: 16px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+              <h3 class="text-color" style="font-size: ${baseSize * 1.125}px; font-weight: bold; margin-bottom: 16px;">
+                📝 Твоя программа:
+              </h3>
+              <div id="drop-zones" style="display: flex; flex-direction: column; gap: 12px;">
+                ${level.blocks.map((_, idx) => `
+                  <div 
+                    class="drop-zone"
+                    data-position="${idx}"
+                    style="display: flex; align-items: center; justify-content: center; min-height: 70px; font-size: ${baseSize}px; color: #94a3b8;"
+                  >
+                    ${idx + 1}. Перетащи блок сюда
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+
+          <div style="text-align: center;">
+            <button 
+              id="check-btn"
+              class="primary-btn"
+              onclick="checkAnswer()"
+              disabled
+              style="background-color: ${config.primary_color || defaultConfig.primary_color}; color: white; padding: 16px 48px; border: none; border-radius: 12px; font-size: ${baseSize * 1.125}px; font-weight: bold; cursor: not-allowed; opacity: 0.5; transition: all 0.3s;"
+            >
+              Проверить решение
+            </button>
+          </div>
+
+          <div id="feedback" style="margin-top: 24px; min-height: 60px;"></div>
+        </div>
+      `;
+
+      setupDragAndDrop();
+    }
+
+    function adjustBrightness(color, percent) {
+      const num = parseInt(color.replace("#", ""), 16);
+      const amt = Math.round(2.55 * percent);
+      const R = (num >> 16) + amt;
+      const G = (num >> 8 & 0x00FF) + amt;
+      const B = (num & 0x0000FF) + amt;
+      return "#" + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+        (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+        (B < 255 ? B < 1 ? 0 : B : 255))
+        .toString(16).slice(1);
+    }
+
+    function setupDragAndDrop() {
+      const draggables = document.querySelectorAll('.draggable');
+      const dropZones = document.querySelectorAll('.drop-zone');
+
+      draggables.forEach(draggable => {
+        draggable.addEventListener('dragstart', (e) => {
+          draggedElement = draggable;
+          draggable.classList.add('dragging');
+        });
+
+        draggable.addEventListener('dragend', () => {
+          draggable.classList.remove('dragging');
+        });
+      });
+
+      dropZones.forEach(zone => {
+        zone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          zone.classList.add('drag-over');
+        });
+
+        zone.addEventListener('dragleave', () => {
+          zone.classList.remove('drag-over');
+        });
+
+        zone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          zone.classList.remove('drag-over');
+
+          if (draggedElement && !zone.classList.contains('filled')) {
+            const blockId = draggedElement.dataset.blockId;
+            const position = parseInt(zone.dataset.position);
+            
+            zone.innerHTML = draggedElement.innerHTML;
+            zone.classList.add('filled');
+            zone.style.background = draggedElement.style.background;
+            zone.style.color = 'white';
+            zone.style.fontFamily = "'Courier New', monospace";
+            zone.style.fontWeight = '600';
+            zone.dataset.blockId = blockId;
+            
+            draggedElement.style.opacity = '0.3';
+            draggedElement.style.cursor = 'not-allowed';
+            draggedElement.draggable = false;
+
+            userOrder[position] = blockId;
+
+            if (userOrder.filter(id => id).length === levels[currentLevel].blocks.length) {
+              document.getElementById('check-btn').disabled = false;
+              document.getElementById('check-btn').style.opacity = '1';
+              document.getElementById('check-btn').style.cursor = 'pointer';
+            }
+          }
+        });
+      });
+    }
+
+    async function checkAnswer() {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const level = levels[currentLevel];
+      const feedback = document.getElementById('feedback');
+      const checkBtn = document.getElementById('check-btn');
+      
+      attempts++;
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'Проверяю...';
+
+      const isCorrect = JSON.stringify(userOrder) === JSON.stringify(level.correctOrder);
+
+      setTimeout(async () => {
+        if (isCorrect) {
+          feedback.innerHTML = `
+            <div class="card-bg success-animation" style="background-color: ${config.card_color || defaultConfig.card_color}; border-radius: 16px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 6px solid ${config.primary_color || defaultConfig.primary_color};">
+              <div style="font-size: ${baseSize * 2}px; text-align: center; margin-bottom: 12px;">🎉</div>
+              <h3 style="color: ${config.primary_color || defaultConfig.primary_color}; font-size: ${baseSize * 1.25}px; font-weight: bold; text-align: center; margin-bottom: 12px;">
+                Правильно! Отличная работа!
+              </h3>
+              <p class="text-color" style="font-size: ${baseSize}px; text-align: center; margin-bottom: 16px; line-height: 1.6;">
+                ${level.explanation}
+              </p>
+              <div style="text-align: center;">
+                <button 
+                  onclick="nextLevel()"
+                  class="primary-btn"
+                  style="background-color: ${config.primary_color || defaultConfig.primary_color}; color: white; padding: 12px 32px; border: none; border-radius: 8px; font-size: ${baseSize}px; font-weight: bold; cursor: pointer;"
+                >
+                  ${currentLevel < levels.length - 1 ? 'Следующий уровень →' : '🏆 Завершить'}
+                </button>
+              </div>
+            </div>
+          `;
+
+          const result = await window.dataSdk.create({
+            level_id: level.id,
+            completed: true,
+            attempts: attempts,
+            timestamp: new Date().toISOString()
+          });
+
+        } else {
+          feedback.innerHTML = `
+            <div class="card-bg error-animation" style="background-color: ${config.card_color || defaultConfig.card_color}; border-radius: 16px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 6px solid #ef4444;">
+              <div style="font-size: ${baseSize * 1.5}px; margin-bottom: 8px;">❌</div>
+              <h3 style="color: #ef4444; font-size: ${baseSize * 1.125}px; font-weight: bold; margin-bottom: 8px;">
+                Не совсем правильно!
+              </h3>
+              <p class="text-color" style="font-size: ${baseSize}px; margin-bottom: 12px;">
+                💡 Подсказка: Программа выполняется сверху вниз. Сначала нужно получить данные, потом их обработать, и в конце вывести результат.
+              </p>
+              <button 
+                onclick="resetLevel()"
+                style="background-color: #64748b; color: white; padding: 10px 24px; border: none; border-radius: 8px; font-size: ${baseSize * 0.9375}px; font-weight: 600; cursor: pointer;"
+              >
+                🔄 Попробовать снова
+              </button>
+            </div>
+          `;
+        }
+      }, 800);
+    }
+
+    function resetLevel() {
+      userOrder = [];
+      attempts = 0;
+      renderApp();
+    }
+
+    function nextLevel() {
+      if (currentLevel < levels.length - 1) {
+        currentLevel++;
+        userOrder = [];
+        attempts = 0;
+        renderApp();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+
+    window.checkAnswer = checkAnswer;
+    window.resetLevel = resetLevel;
+    window.nextLevel = nextLevel;
+
+    document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9b2f6bec8761e4c4',t:'MTc2NjU3MjIwOC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
